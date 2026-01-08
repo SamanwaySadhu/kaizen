@@ -2474,6 +2474,10 @@ int main(int argc, char *argv[]){
    		input_dim = 32;
    		printf("TEST\n");
    		model = 3;
+   	} else if(strcmp(argv[1], "RESNET") == 0){
+   		input_dim = 32;
+		printf("Resnet\n");
+   		model = 6;
    	}
    	else{
    		printf("Invalid Neural network\n");

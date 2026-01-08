@@ -8,6 +8,7 @@
 #define TEST 3
 #define AlexNet 4
 #define mAlexNet 5
+#define RESNET 6
 
 
 extern unsigned long int mul_counter;
@@ -833,6 +834,110 @@ struct convolutional_network init_network(int selected_model,int batch_size,int 
 		net.Weights = add_dense(net.Weights,32*8*8,2*1024);
 		net.Weights = add_dense(net.Weights,2*1024,512);
 		net.Weights = add_dense(net.Weights,512,16);
+	}
+	else if(model == RESNET){
+		// CIFAR-10 Narrow ResNet (k=1)
+		// Input: 32x32x3
+		
+		// Initial Conv Layer
+		// Op#0: Conv3x3, 3 -> 16 filters
+		net.Filters = add_filter(net.Filters,16,channels,3); // 32x32
+		net.convolution_pooling.push_back(0);
+		
+		// Stage 1: 3 BasicBlocks, 16 filters (stride=1)
+		// Op#1: Conv3x3, 16 -> 16
+		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.convolution_pooling.push_back(0);
+		
+		// Op#2: Conv3x3, 16 -> 16
+		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.convolution_pooling.push_back(0);
+		
+		// Op#3: Conv3x3, 16 -> 16
+		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.convolution_pooling.push_back(0);
+		
+		// Op#4: Conv3x3, 16 -> 16
+		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.convolution_pooling.push_back(0);
+		
+		// Op#5: Conv3x3, 16 -> 16
+		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.convolution_pooling.push_back(0);
+		
+		// Op#6: Conv3x3, 16 -> 16
+		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.convolution_pooling.push_back(0);
+		
+		// Stage 2: 3 BasicBlocks, 32 filters (stride=2 on first block)
+		// Op#7: Conv3x3, 16 -> 32 (stride=2 via pooling)
+		net.Filters = add_filter(net.Filters,32,16,3); // 16x16
+		net.convolution_pooling.push_back(1); // pooling reduces 32x32 -> 16x16
+		
+		// Op#8: Conv3x3, 32 -> 32
+		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.convolution_pooling.push_back(0);
+		
+		// Op#9: Conv3x3, 32 -> 32
+		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.convolution_pooling.push_back(0);
+		
+		// Op#10: Conv3x3, 32 -> 32
+		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.convolution_pooling.push_back(0);
+		
+		// Op#11: Conv3x3, 32 -> 32
+		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.convolution_pooling.push_back(0);
+		
+		// Op#12: Conv3x3, 32 -> 32
+		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.convolution_pooling.push_back(0);
+		
+		// Stage 3: 3 BasicBlocks, 64 filters (stride=2 on first block)
+		// Op#13: Conv3x3, 32 -> 64 (stride=2 via pooling)
+		net.Filters = add_filter(net.Filters,64,32,3); // 8x8
+		net.convolution_pooling.push_back(1); // pooling reduces 16x16 -> 8x8
+		
+		// Op#14: Conv3x3, 64 -> 64
+		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
+		net.convolution_pooling.push_back(0);
+		
+		// Op#15: Conv3x3, 64 -> 64
+		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
+		net.convolution_pooling.push_back(0);
+		
+		// Op#16: Conv3x3, 64 -> 64
+		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
+		net.convolution_pooling.push_back(0);
+		
+		// Op#17: Conv3x3, 64 -> 64
+		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
+		net.convolution_pooling.push_back(0);
+		
+		// Op#18: Conv3x3, 64 -> 64
+		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
+		net.convolution_pooling.push_back(0);
+		
+		net.final_out = 64;
+		net.final_w = 8;
+		
+		// Setup rotated filters
+		net.Rotated_Filters.resize(net.Filters.size());
+		for(int i = 0; i < net.Filters.size(); i++){
+			net.Rotated_Filters[i].resize(net.Filters[i].size());
+			for(int j = 0; j < net.Filters[i].size(); j++){
+				net.Rotated_Filters[i][j].resize(net.Filters[i][j].size());
+				for(int k = 0; k < net.Filters[i][j].size(); k++){
+					net.Rotated_Filters[i][j][k] = (rotate(net.Filters[i][j][k]));
+				}
+			}
+		}
+		
+		// Head: Average pooling reduces 8x8 -> 1x1
+		// Then flatten: 64*1*1 = 64
+		// Op#30: Dense layer
+		net.Weights = add_dense(net.Weights,64,10);
 	}
 	else{
 		net.Filters = add_filter(net.Filters,32,channels,7); // 56
