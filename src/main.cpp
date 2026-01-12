@@ -362,14 +362,11 @@ struct proof prove_ifft_matrix(vector<vector<F>> M, vector<F> r, F previous_sum)
 	//F::inv(scale,M[0].size());
 	vector<F> r1,r2;
 	
-
-	
-	for(int i = 0; i < int(log2(M[0].size()))-1; i++){
+	for(int i = 0; i < int(log2(M[0].size())); i++){
 		r2.push_back(r[i]);
 	}
-	r2.push_back(r[r.size()-1]);
 	for(int i = 0; i < int(log2(M.size())); i++){
-		r1.push_back(r[i+int(log2(M[0].size()))-1]);
+		r1.push_back(r[i+int(log2(M[0].size()))]);
 	}
 	vector<F> Fg(M[0].size());
 	clock_t start,end;
@@ -763,10 +760,16 @@ vector<struct proof> prove_convolution(struct convolution_layer conv, vector<F> 
 	// it can be consistent with the plaintext computation. The reordered_r is the 
 	// evaluation point for the output before re-organization.
 	vector<F> reordered_r; 
-	for(int i = 0; i < (int)log2(conv.n*conv.n); i++){
+	int total_spatial = (int)log2(conv.n*conv.n);
+	int target_spatial = (int)log2(conv.Prod[0].size());
+	
+	for(int i = 0; i < total_spatial; i++){
 		reordered_r.push_back(F(1)-r[i]);
 	}
-	for(int i = (int)log2(conv.n*conv.n); i < r.size(); i++){
+	for(int i = 0; i < target_spatial - total_spatial; i++){
+		reordered_r.push_back(F(0));
+	}
+	for(int i = total_spatial; i < r.size(); i++){
 		reordered_r.push_back(r[i]);
 	}
 	Pr = prove_ifft_matrix(conv.Prod,reordered_r,previous_sum);
@@ -955,7 +958,7 @@ void prove_avg(struct avg_layer avg_data,vector<F> &r, F &previous_sum, int pool
 		data.push_back(F(0));
 		predicates_size.push_back(data.size()-1);
 	
-		F divisor = quantize(avg_data.window*avg_data.window);
+		F divisor = F(avg_data.window*avg_data.window);
 
 		//write_data(data,name_avg);
 
@@ -1446,7 +1449,7 @@ void prove_feedforward(struct convolutional_network net){
 	
 	avg = net.avg_layers[net.avg_layers.size()-1];
 	prove_flattening(net,r,previous_sum);
-	//prove_avg(avg,r,previous_sum,net.convolution_pooling[net.convolution_pooling.size()-1]);
+	prove_avg(avg,r,previous_sum,net.convolution_pooling[net.convolution_pooling.size()-1]);
 	prove_convolution(conv, r,previous_sum,false);
 	
 	
@@ -1486,8 +1489,22 @@ void prove_convolution_backprop(struct convolution_layer_backprop conv_back,stru
 	
 	//previous_sum = evaluate_vector(convert2vector(conv_back.dx),r_der);
 
+	
+	vector<F> reordered_r; 
+	int total_spatial = (int)log2(conv_back.U_dx[0].size());
+	int target_spatial = (int)log2(conv_back.Prod_dx[0].size());
+	
+	for(int i = 0; i < total_spatial; i++){
+		reordered_r.push_back(r[i]);
+	}
+	for(int i = 0; i < target_spatial - total_spatial; i++){
+		reordered_r.push_back(F(0));
+	}
+	for(int i = total_spatial; i < r.size(); i++){
+		reordered_r.push_back(r[i]);
+	}
 
-	P = prove_ifft_matrix(conv_back.Prod_dx,r,previous_sum);
+	P = prove_ifft_matrix(conv_back.Prod_dx,reordered_r,previous_sum);
 	Transcript.push_back(P);
 	previous_sum = P.vr[1];
 	r.clear();
@@ -1660,7 +1677,20 @@ void prove_correct_gradient_computation(struct convolution_layer_backprop conv_b
 
 	previous_sum = evaluate_vector(convert2vector(conv_back.fft_dw),r);
 
-	P = prove_ifft_matrix(conv_back.Prod,r,previous_sum);
+	vector<F> reordered_r;
+	int total_spatial = (int)log2(conv_back.fft_dw[0].size()); 
+	int target_spatial = (int)log2(conv_back.Prod[0].size());
+	
+	for(int i = 0; i < total_spatial; i++){
+		reordered_r.push_back(r[i]);
+	}
+	for(int i = 0; i < target_spatial - total_spatial; i++){
+		reordered_r.push_back(F(0));
+	}
+	for(int i = total_spatial; i < r.size(); i++){
+		reordered_r.push_back(r[i]);
+	}
+	P = prove_ifft_matrix(conv_back.Prod,reordered_r,previous_sum);
 	Transcript.push_back(P);
 
 	previous_sum = P.vr[1];
@@ -2478,6 +2508,10 @@ int main(int argc, char *argv[]){
    		input_dim = 32;
 		printf("Resnet\n");
    		model = 6;
+   	} else if(strcmp(argv[1], "SIMPLE") == 0){
+   		input_dim = 32;
+		printf("SimpleCNN\n");
+   		model = 7;
    	}
    	else{
    		printf("Invalid Neural network\n");

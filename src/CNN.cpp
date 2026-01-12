@@ -9,6 +9,7 @@
 #define AlexNet 4
 #define mAlexNet 5
 #define RESNET 6
+#define SIMPLE 7
 
 
 extern unsigned long int mul_counter;
@@ -173,7 +174,7 @@ vector<vector<vector<F>>> avg_pool_2(vector<vector<F>> input,int chout,int n,int
 	
 	for(int i = 0; i < avg.size(); i++){
 		for(int j = 0; j < avg[i].size(); j++){
-			remainders[i].push_back(aggr[i][j] - quantize(window*window)*avg[i][j]);
+			remainders[i].push_back(aggr[i][j] - F(window*window)*avg[i][j]);
 		}
 	}
 
@@ -778,7 +779,52 @@ struct convolutional_network init_network(int selected_model,int batch_size,int 
 		}
 		net.Weights = add_dense(net.Weights,32*16,32);
 		net.Weights = add_dense(net.Weights,32,16);
-	}
+	} else if(model == SIMPLE){
+        // --- 1. Convolution Layer ---
+        // 4 output channels, 'channels' input channels, 1x1 kernel size
+        net.Filters = add_filter(net.Filters, 4, channels, 1); 
+        // No Pooling for first layer
+        net.convolution_pooling.push_back(1);
+
+		net.Filters = add_filter(net.Filters, 4, 4, 1); 
+        // Average Pooling (2x2) for second layer
+        net.convolution_pooling.push_back(1);
+
+		net.Filters = add_filter(net.Filters, 4, 4, 1); 
+        // Average Pooling (2x2) for second layer
+        net.convolution_pooling.push_back(1);
+
+		net.Filters = add_filter(net.Filters, 4, 4, 1); 
+        // Average Pooling (2x2) for second layer
+        net.convolution_pooling.push_back(1);
+
+        // --- Setup Output Dimensions for Flattening ---
+        // Input: 32x32 
+        // After Conv1 (1x1): 32x32 (no pooling)
+        // After Conv2 (5x5): 28x28
+        // After Pool (2x2): 14x14
+        net.final_out = 4; // 4 output channels from last conv
+        net.final_w = 2;  // Resulting width after pooling (padded to 16)
+
+        // --- Rotate Filters (Required for Backprop) ---
+        net.Rotated_Filters.resize(net.Filters.size());
+        for(int i = 0; i < net.Filters.size(); i++){
+            net.Rotated_Filters[i].resize(net.Filters[i].size());
+            for(int j = 0; j < net.Filters[i].size(); j++){
+                net.Rotated_Filters[i][j].resize(net.Filters[i][j].size());
+                for(int k = 0; k < net.Filters[i][j].size(); k++){
+                    net.Rotated_Filters[i][j][k] = (rotate(net.Filters[i][j][k]));
+                }
+            }
+        }
+
+        // --- Fully Connected Layers ---
+        // Input size: 4 channels * 8 * 8 = 256
+        // Output size: 16
+        net.Weights = add_dense(net.Weights, 4*2*2, 128);
+		net.Weights = add_dense(net.Weights, 128, 64);
+		net.Weights = add_dense(net.Weights, 64, 2);
+    }
 	else if(model == mAlexNet){
 		/*
 		net.Filters = add_filter(net.Filters,32,channels,7); // 56
@@ -836,91 +882,66 @@ struct convolutional_network init_network(int selected_model,int batch_size,int 
 		net.Weights = add_dense(net.Weights,512,16);
 	}
 	else if(model == RESNET){
-		// CIFAR-10 Narrow ResNet (k=1)
-		// Input: 32x32x3
 		
-		// Initial Conv Layer
-		// Op#0: Conv3x3, 3 -> 16 filters
-		net.Filters = add_filter(net.Filters,16,channels,3); // 32x32
+		net.Filters = add_filter(net.Filters,16,channels,1); // 32
 		net.convolution_pooling.push_back(0);
 		
-		// Stage 1: 3 BasicBlocks, 16 filters (stride=1)
-		// Op#1: Conv3x3, 16 -> 16
-		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.Filters = add_filter(net.Filters,16,16,1); // 32
 		net.convolution_pooling.push_back(0);
 		
-		// Op#2: Conv3x3, 16 -> 16
-		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.Filters = add_filter(net.Filters,16,16,1); // 32
 		net.convolution_pooling.push_back(0);
 		
-		// Op#3: Conv3x3, 16 -> 16
-		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.Filters = add_filter(net.Filters,16,16,1); // 32
 		net.convolution_pooling.push_back(0);
 		
-		// Op#4: Conv3x3, 16 -> 16
-		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.Filters = add_filter(net.Filters,16,16,1); // 32
 		net.convolution_pooling.push_back(0);
 		
-		// Op#5: Conv3x3, 16 -> 16
-		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.Filters = add_filter(net.Filters,16,16,1); // 32
 		net.convolution_pooling.push_back(0);
 		
-		// Op#6: Conv3x3, 16 -> 16
-		net.Filters = add_filter(net.Filters,16,16,3); // 32x32
+		net.Filters = add_filter(net.Filters,16,16,1); // 32
+		net.convolution_pooling.push_back(1); // 16
+
+		net.Filters = add_filter(net.Filters,32,16,1); // 16
+		net.convolution_pooling.push_back(1); // 8
+		
+		net.Filters = add_filter(net.Filters,32,32,1); // 8
 		net.convolution_pooling.push_back(0);
 		
-		// Stage 2: 3 BasicBlocks, 32 filters (stride=2 on first block)
-		// Op#7: Conv3x3, 16 -> 32 (stride=2 via pooling)
-		net.Filters = add_filter(net.Filters,32,16,3); // 16x16
-		net.convolution_pooling.push_back(1); // pooling reduces 32x32 -> 16x16
-		
-		// Op#8: Conv3x3, 32 -> 32
-		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.Filters = add_filter(net.Filters,32,32,1); // 8
 		net.convolution_pooling.push_back(0);
 		
-		// Op#9: Conv3x3, 32 -> 32
-		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.Filters = add_filter(net.Filters,32,32,1); // 8
 		net.convolution_pooling.push_back(0);
 		
-		// Op#10: Conv3x3, 32 -> 32
-		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.Filters = add_filter(net.Filters,32,32,1); // 8
 		net.convolution_pooling.push_back(0);
 		
-		// Op#11: Conv3x3, 32 -> 32
-		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.Filters = add_filter(net.Filters,32,32,1); // 8
+		net.convolution_pooling.push_back(1); // 4
+		
+		net.Filters = add_filter(net.Filters,64,32,1); // 4
+		net.convolution_pooling.push_back(1); // 2
+		
+		net.Filters = add_filter(net.Filters,64,64,1); // 2
 		net.convolution_pooling.push_back(0);
 		
-		// Op#12: Conv3x3, 32 -> 32
-		net.Filters = add_filter(net.Filters,32,32,3); // 16x16
+		net.Filters = add_filter(net.Filters,64,64,1); // 2
 		net.convolution_pooling.push_back(0);
 		
-		// Stage 3: 3 BasicBlocks, 64 filters (stride=2 on first block)
-		// Op#13: Conv3x3, 32 -> 64 (stride=2 via pooling)
-		net.Filters = add_filter(net.Filters,64,32,3); // 8x8
-		net.convolution_pooling.push_back(1); // pooling reduces 16x16 -> 8x8
-		
-		// Op#14: Conv3x3, 64 -> 64
-		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
+		net.Filters = add_filter(net.Filters,64,64,1); // 2
 		net.convolution_pooling.push_back(0);
 		
-		// Op#15: Conv3x3, 64 -> 64
-		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
+		net.Filters = add_filter(net.Filters,64,64,1); // 2
 		net.convolution_pooling.push_back(0);
 		
-		// Op#16: Conv3x3, 64 -> 64
-		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
-		net.convolution_pooling.push_back(0);
-		
-		// Op#17: Conv3x3, 64 -> 64
-		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
-		net.convolution_pooling.push_back(0);
-		
-		// Op#18: Conv3x3, 64 -> 64
-		net.Filters = add_filter(net.Filters,64,64,3); // 8x8
-		net.convolution_pooling.push_back(0);
+		net.Filters = add_filter(net.Filters,64,64,1); // 2
+		net.convolution_pooling.push_back(1); // 1
 		
 		net.final_out = 64;
-		net.final_w = 8;
+		net.final_w = 1;
 		
 		// Setup rotated filters
 		net.Rotated_Filters.resize(net.Filters.size());
@@ -937,7 +958,7 @@ struct convolutional_network init_network(int selected_model,int batch_size,int 
 		// Head: Average pooling reduces 8x8 -> 1x1
 		// Then flatten: 64*1*1 = 64
 		// Op#30: Dense layer
-		net.Weights = add_dense(net.Weights,64,10);
+		net.Weights = add_dense(net.Weights,64,16);
 	}
 	else{
 		net.Filters = add_filter(net.Filters,32,channels,7); // 56
@@ -1650,8 +1671,12 @@ struct convolutional_network back_propagation( struct convolutional_network net)
 	//printf("Calculating Backpropagation Circuit\n");
 	vector<vector<vector<vector<F>>>> der(batch),dx(batch);
 	vector<vector<F>> out_der(batch),dense_dx(batch);
+	int out_der_dim = 16;
+	if (net.fully_connected.size() > 0){
+		out_der_dim = net.fully_connected.back().W.size();
+	}
 	for(int i = 0; i < batch; i++){
-		out_der[i] = initialize_filter(16);
+		out_der[i] = initialize_filter(out_der_dim);
 	}
 
 	for(int i = net.Weights.size()-1; i >= 0; i--){
